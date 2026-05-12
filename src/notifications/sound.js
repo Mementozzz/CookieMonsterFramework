@@ -1,3 +1,27 @@
+const bufferMap = new Map();
+let audioCtx;
+let source;
+
+function playBuffer(buffer) {
+  source = audioCtx.createBufferSource();
+  source.buffer = buffer;
+}
+
+async function fetchOrRecoverAudio(url) {
+  let bufferData;
+  try {
+    bufferData = bufferMap.get(url);
+    if (!bufferData) {
+      const response = await fetch(url);
+      bufferData = await response.arrayBuffer();
+      bufferMap.set(url, bufferData);
+    }
+    audioCtx.decodeAudioData(bufferData, playBuffer);
+  } catch (err) {
+    console.error(`Unable to fetch the audio file. Error: ${err.message}`);
+  }
+}
+
 /**
  * This function plays a sound depending on config
  * @param	{string}	modName	    The name of the mod
@@ -11,14 +35,23 @@ export default function playCMSound(modName, url, sndConfig, volConfig, forced) 
     (Game.mods.cookieMonsterFramework.saveData[modName].settings[sndConfig] === 1 || forced) &&
     window.cookieMonsterFrameworkData.isInitializing === false
   ) {
-    // eslint-disable-next-line new-cap
-    const sound = new Audio(url);
-    if (Game.mods.cookieMonsterFramework.saveData[modName].settings.GeneralSound)
-      sound.volume =
+    fetchOrRecoverAudio(url);
+    const gainNode = audioCtx.createGain();
+
+    if (
+      Game.mods.cookieMonsterFramework.saveData[modName].settings.GeneralSound
+    )
+      gainNode.gain.value =
         (Game.mods.cookieMonsterFramework.saveData[modName].settings[volConfig] / 100) *
         (Game.volume / 100);
     else
-      sound.volume = Game.mods.cookieMonsterFramework.saveData[modName].settings[volConfig] / 100;
-    sound.play();
+      gainNode.gain.value =
+        Game.mods.cookieMonsterFramework.saveData[modName].settings[volConfig] / 100;
+
+    source.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    source.loop = true;
+    source.start();
   }
 }
